@@ -8,10 +8,6 @@
 #include <netinet/in.h>
 #include <errno.h>
 
-#define PORT 8085
-#define BACKLOG 5
-#define BUFFER_SIZE 1024
-
 volatile sig_atomic_t wasSigHup = 0;
 
 void sigHupHandler(int r) 
@@ -39,7 +35,7 @@ int main()
     // Setting socket address parameters
     socketAddress.sin_family = AF_INET;
     socketAddress.sin_addr.s_addr = INADDR_ANY;
-    socketAddress.sin_port = htons(PORT);
+    socketAddress.sin_port = htons(8080);
 
     // Socket binding to the address
     if (bind(serverFD, (struct sockaddr*)&socketAddress, sizeof(socketAddress)) < 0) 
@@ -49,13 +45,13 @@ int main()
     }
 
     // Started socket listening
-    if (listen(serverFD, BACKLOG) < 0) 
+    if (listen(serverFD, 5) < 0) 
     {
         perror("listen error");
         exit(EXIT_FAILURE);
     }   
 
-    printf("Server started on port %d \n\n", PORT);
+    printf("Server started on port %d \n\n", 8080);
 
     // Setting up signal blocking
     sigemptyset(&blockedMask);
@@ -80,16 +76,18 @@ int main()
             maxFd = incomingSocketFD;
         else 
             maxFd = serverFD; 
-        if (pselect(maxFd + 1, &fds, NULL, NULL, NULL, &origMask) != -1)
+        if (pselect(maxFd + 1, &fds, NULL, NULL, NULL, &origMask) == -1)
         {
-            if (wasSigHup) 
+            if (errno == EINTR)
             {
-                printf("SIGHUP received.\n");
-                wasSigHup = 0;
-                continue;
-            }   
-        } else {
-            if (errno != EINTR) 
+                if (wasSigHup) 
+                {
+                    printf("SIGHUP received.\n");
+                    wasSigHup = 0;
+                    continue;
+                }
+            }
+            else
             {
                 perror("pselect error"); 
                 exit(EXIT_FAILURE); 
@@ -98,16 +96,10 @@ int main()
         // Reading incoming bytes
         if (incomingSocketFD > 0 && FD_ISSET(incomingSocketFD, &fds)) 
         { 
-            char buffer[BUFFER_SIZE] = { 0 };
-            int readBytes = read(incomingSocketFD, buffer, BUFFER_SIZE);
+            char buffer[1024] = { 0 };
+            int readBytes = read(incomingSocketFD, buffer, 1024);
                 if (readBytes > 0) 
-                { 
                     printf("Received data: %d bytes\n", readBytes);
-                    printf("Received message from client: %s\n", buffer);
-                    const char* response = "Hello from server!";
-                    if (send(incomingSocketFD, response, strlen(response), 0) < 0) 
-                        perror("send error");
-                } 
                 else 
                 {
                     if (readBytes == 0) 
